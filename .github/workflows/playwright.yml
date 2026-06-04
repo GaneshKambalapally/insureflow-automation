@@ -31,7 +31,7 @@ jobs:
         run: cd app && npm install
 
       - name: Seed database
-        run: cd app && node seed.js
+        run: cd app && node databse/seed.js
 
       - name: Start InsureFlow app
         run: |
