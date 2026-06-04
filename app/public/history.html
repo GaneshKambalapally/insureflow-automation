@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InsureFlow - Payment History</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar"></div>
+<main class="main">
+  <div class="page-header">
+    <h1 class="page-title">📊 Payment History</h1>
+    <p class="page-subtitle">View and filter all payment transactions</p>
+  </div>
+
+  <div class="card">
+    <div class="filter-bar">
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select id="filterStatus" class="form-control">
+          <option value="">All</option>
+          <option value="success">Success</option>
+          <option value="failed">Failed</option>
+          <option value="pending">Pending</option>
+          <option value="reversed">Reversed</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Method</label>
+        <select id="filterMethod" class="form-control">
+          <option value="">All</option>
+          <option value="NEFT">NEFT</option>
+          <option value="NACH">NACH</option>
+          <option value="CARD">CARD</option>
+          <option value="UPI">UPI</option>
+          <option value="CHEQUE">CHEQUE</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">From Date</label>
+        <input type="date" id="filterFrom" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label">To Date</label>
+        <input type="date" id="filterTo" class="form-control">
+      </div>
+      <button class="btn btn-primary" onclick="loadHistory()">🔍 Search</button>
+      <button class="btn btn-outline" onclick="resetFilters()">↺ Reset</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Transaction Ref</th>
+            <th>Policy</th>
+            <th>Holder</th>
+            <th>Amount</th>
+            <th>Method</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Receipt</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"><tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Loading...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+</main>
+
+<script src="/js/utils.js"></script>
+<script>
+  requireAuth();
+  renderSidebar('history');
+  let currentPage = 1;
+
+  async function loadHistory(page = 1) {
+    currentPage = page;
+    const status  = document.getElementById('filterStatus').value;
+    const method  = document.getElementById('filterMethod').value;
+    const from    = document.getElementById('filterFrom').value;
+    const to      = document.getElementById('filterTo').value;
+
+    const params = new URLSearchParams({ page, limit: 10 });
+    if (status) params.append('status', status);
+    if (method) params.append('payment_method', method);
+    if (from)   params.append('from_date', from);
+    if (to)     params.append('to_date', to);
+
+    const { ok, data } = await apiCall('GET', `/payments/history?${params}`);
+    const tbody = document.getElementById('historyBody');
+
+    if (!ok) { tbody.innerHTML = '<tr><td colspan="8">Error loading data</td></tr>'; return; }
+    const payments = data.data || [];
+
+    if (!payments.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">No payments found for selected filters</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = payments.map(p => `
+      <tr>
+        <td><code style="font-size:12px">${p.transaction_ref}</code></td>
+        <td>${p.policy_number}</td>
+        <td>${p.holder_name}</td>
+        <td><strong>${formatCurrency(p.amount)}</strong></td>
+        <td><span class="badge badge-info">${p.payment_method}</span></td>
+        <td>${statusBadge(p.status)}</td>
+        <td>${formatDateTime(p.paid_at || p.created_at)}</td>
+        <td>${p.status === 'success' ? `<a href="/api/payments/receipt/${p.id}" target="_blank" class="btn btn-outline btn-sm">📄</a>` : '—'}</td>
+      </tr>
+    `).join('');
+
+    // Simple pagination
+    const totalPages = Math.ceil((data.count || payments.length) / 10);
+    if (totalPages > 1) {
+      document.getElementById('pagination').innerHTML = Array.from({length: totalPages}, (_, i) =>
+        `<button class="page-btn ${i+1 === page ? 'active' : ''}" onclick="loadHistory(${i+1})">${i+1}</button>`
+      ).join('');
+    }
+  }
+
+  function resetFilters() {
+    ['filterStatus','filterMethod','filterFrom','filterTo'].forEach(id => {
+      const el = document.getElementById(id);
+      el.value = '';
+    });
+    loadHistory();
+  }
+
+  loadHistory();
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+{
+    "users": {
+        "admin": {
+            "email": "admin@insureflow.com",
+            "password": "Admin@123",
+            "role": "admin",
+            "name": "Admin User"
+        },
+        "agent": {
+            "email": "agent@insureflow.com",
+            "password": "Agent@123",
+            "role": "agent",
+            "name": "Rajesh Kumar"
+        },
+        "policyholder": {
+            "email": "john.doe@email.com",
+            "password": "Policy@123",
+            "role": "policyholder",
+            "name": "John Doe"
+        },
+        "inactiveUser": {
+            "email": "vikram.mehta@email.com",
+            "password": "Policy@123"
+        }
+    },
+    "payments": {
+        "valid": {
+            "policyIndex": 1,
+            "amount": "12500",
+            "method": "NEFT",
+            "remarks": "Annual premium payment - test"
+        },
+        "validNACH": {
+            "policyIndex": 1,
+            "amount": "25000",
+            "method": "NACH"
+        },
+        "validCARD": {
+            "policyIndex": 1,
+            "amount": "15000",
+            "method": "CARD"
+        },
+        "validCHEQUE": {
+            "policyIndex": 1,
+            "amount": "18000",
+            "method": "CHEQUE"
+        }
+    },
+    "claims": {
+        "valid": {
+            "policyIndex": 1,
+            "amount": "45000",
+            "reason": "Hospitalization",
+            "description": "Emergency appendix surgery"
+        },
+        "motor": {
+            "policyIndex": 1,
+            "amount": "85000",
+            "reason": "Accident damage",
+            "description": "Vehicle accident"
+        }
+    }
+}

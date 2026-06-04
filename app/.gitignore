@@ -1,0 +1,7 @@
+node_modules/
+database/*.db
+logs/
+.env
+.env.staging
+*.log
+.DS_Store

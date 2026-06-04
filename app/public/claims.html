@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InsureFlow - Claims</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar"></div>
+<main class="main">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <h1 class="page-title">📋 Claims Management</h1>
+      <p class="page-subtitle">File, review and track insurance claims</p>
+    </div>
+    <button class="btn btn-primary" onclick="openRaiseModal()">+ Raise Claim</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">All Claims</div>
+    <div class="table-wrapper">
+      <table id="claimsTable">
+        <thead><tr><th>Claim No.</th><th>Policy</th><th>Type</th><th>Amount</th><th>Reason</th><th>Status</th><th>Filed</th><th>Actions</th></tr></thead>
+        <tbody id="claimsBody"><tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- Raise Claim Modal -->
+<div class="modal-overlay" id="raiseModal">
+  <div class="modal">
+    <div class="modal-title">📋 Raise New Claim</div>
+    <div id="raiseAlert"></div>
+    <form id="raiseForm">
+      <div class="form-group">
+        <label class="form-label">Select Policy *</label>
+        <select id="claimPolicy" class="form-control" required>
+          <option value="">-- Select policy --</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Claim Amount (₹) *</label>
+          <input type="number" id="claimAmount" class="form-control" min="1" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reason *</label>
+          <select id="claimReason" class="form-control" required>
+            <option value="">-- Select --</option>
+            <option>Hospitalization</option>
+            <option>Accident damage</option>
+            <option>Critical illness</option>
+            <option>Outpatient treatment</option>
+            <option>Property damage</option>
+            <option>Theft</option>
+            <option>Natural disaster</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="claimDesc" class="form-control" rows="3" placeholder="Describe the incident..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="closeRaiseModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Submit Claim</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Action Modal (Approve/Reject) -->
+<div class="modal-overlay" id="actionModal">
+  <div class="modal">
+    <div class="modal-title" id="actionTitle">Action</div>
+    <div id="actionContent"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeActionModal()">Cancel</button>
+      <button class="btn btn-primary" id="actionConfirmBtn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/utils.js"></script>
+<script>
+  requireAuth();
+  renderSidebar('claims');
+  const user = getUser();
+
+  async function loadClaims() {
+    const { ok, data } = await apiCall('GET', '/claims');
+    const tbody = document.getElementById('claimsBody');
+    if (!ok) { tbody.innerHTML = '<tr><td colspan="8">Error loading claims</td></tr>'; return; }
+    const claims = data.data || [];
+    if (!claims.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">No claims found</td></tr>'; return; }
+    tbody.innerHTML = claims.map(c => `
+      <tr>
+        <td><strong>${c.claim_number}</strong></td>
+        <td>${c.policy_number}</td>
+        <td><span class="badge badge-info">${c.plan_type?.toUpperCase()}</span></td>
+        <td>${formatCurrency(c.amount)}</td>
+        <td>${c.reason}</td>
+        <td>${statusBadge(c.status)}</td>
+        <td>${formatDate(c.filed_at)}</td>
+        <td>${getActions(c)}</td>
+      </tr>
+    `).join('');
+  }
+
+  function getActions(c) {
+    let html = '';
+    if (['admin','agent'].includes(user.role)) {
+      if (['pending','under_review'].includes(c.status)) {
+        html += `<button class="btn btn-success btn-sm" onclick="openAction('approve',${c.id},'${c.claim_number}',${c.amount})">✓ Approve</button> `;
+        html += `<button class="btn btn-danger btn-sm" onclick="openAction('reject',${c.id},'${c.claim_number}',0)">✗ Reject</button>`;
+      }
+      if (c.status === 'approved' && user.role === 'admin') {
+        html += `<button class="btn btn-primary btn-sm" onclick="openAction('disburse',${c.id},'${c.claim_number}',${c.approved_amount})">💸 Disburse</button>`;
+      }
+    }
+    return html || '<span style="color:var(--text-muted)">—</span>';
+  }
+
+  async function loadPolicies() {
+    const { ok, data } = await apiCall('GET', '/policies');
+    if (ok) {
+      (data.data || []).filter(p => p.status === 'active').forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.policy_number} - ${p.plan_type.toUpperCase()}`;
+        document.getElementById('claimPolicy').appendChild(opt);
+      });
+    }
+  }
+
+  function openRaiseModal() { document.getElementById('raiseModal').classList.add('active'); }
+  function closeRaiseModal() { document.getElementById('raiseModal').classList.remove('active'); }
+  function closeActionModal() { document.getElementById('actionModal').classList.remove('active'); }
+
+  let currentAction = null;
+  function openAction(type, id, claimNo, amount) {
+    currentAction = { type, id };
+    const modal = document.getElementById('actionModal');
+    document.getElementById('actionTitle').textContent = type === 'approve' ? '✅ Approve Claim' : type === 'reject' ? '❌ Reject Claim' : '💸 Disburse Claim';
+    document.getElementById('actionContent').innerHTML = type === 'approve'
+      ? `<p>Approving claim <strong>${claimNo}</strong></p><div class="form-group" style="margin-top:12px"><label class="form-label">Approved Amount (₹)</label><input type="number" id="approvedAmt" class="form-control" value="${amount}"></div>`
+      : type === 'reject'
+      ? `<p>Reject claim <strong>${claimNo}</strong>?</p><div class="form-group" style="margin-top:12px"><label class="form-label">Rejection Reason</label><input type="text" id="rejectReason" class="form-control" placeholder="State reason"></div>`
+      : `<p>Disburse <strong>${formatCurrency(amount)}</strong> for claim <strong>${claimNo}</strong>?</p>`;
+    modal.classList.add('active');
+  }
+
+  document.getElementById('actionConfirmBtn').addEventListener('click', async () => {
+    if (!currentAction) return;
+    const { type, id } = currentAction;
+    let body = {};
+    if (type === 'approve') body = { approved_amount: parseFloat(document.getElementById('approvedAmt').value) };
+    if (type === 'reject')  body = { rejection_reason: document.getElementById('rejectReason').value };
+
+    const { ok, data } = await apiCall('PUT', `/claims/${id}/${type}`, body);
+    showToast(data.message, ok ? 'success' : 'error');
+    closeActionModal();
+    loadClaims();
+  });
+
+  document.getElementById('raiseForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      policy_id: parseInt(document.getElementById('claimPolicy').value),
+      amount: parseFloat(document.getElementById('claimAmount').value),
+      reason: document.getElementById('claimReason').value,
+      description: document.getElementById('claimDesc').value
+    };
+    const { ok, data } = await apiCall('POST', '/claims', body);
+    if (ok) { showToast('Claim filed successfully!', 'success'); closeRaiseModal(); loadClaims(); }
+    else document.getElementById('raiseAlert').innerHTML = `<div class="alert alert-error">${data.message}</div>`;
+  });
+
+  loadClaims();
+  loadPolicies();
+</script>
+</body>
+</html>

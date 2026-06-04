@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InsureFlow - Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar"></div>
+<main class="main">
+  <div class="page-header">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle" id="welcomeMsg">Welcome back!</p>
+  </div>
+
+  <div class="stat-grid" id="statsGrid">
+    <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-value" id="statPolicies">—</div><div class="stat-label">Total Policies</div></div>
+    <div class="stat-card success"><div class="stat-icon">✅</div><div class="stat-value" id="statPayments">—</div><div class="stat-label">Successful Payments</div></div>
+    <div class="stat-card warning"><div class="stat-icon">⏳</div><div class="stat-value" id="statPending">—</div><div class="stat-label">Pending Claims</div></div>
+    <div class="stat-card danger"><div class="stat-icon">❌</div><div class="stat-value" id="statFailed">—</div><div class="stat-label">Failed Payments</div></div>
+  </div>
+
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px">
+    <div class="card">
+      <div class="card-title">📋 My Policies</div>
+      <div id="policiesList"><p style="color:var(--text-muted)">Loading...</p></div>
+    </div>
+    <div class="card">
+      <div class="card-title">💰 Recent Payments</div>
+      <div id="recentPayments"><p style="color:var(--text-muted)">Loading...</p></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔔 Due Payments Alert</div>
+    <div id="dueAlerts"></div>
+  </div>
+</main>
+
+<script src="/js/utils.js"></script>
+<script>
+  requireAuth();
+  const user = getUser();
+  renderSidebar('dashboard');
+  document.getElementById('welcomeMsg').textContent = `Welcome back, ${user.name}! (${user.role})`;
+
+  async function loadDashboard() {
+    const [policyRes, paymentRes, claimsRes] = await Promise.all([
+      apiCall('GET', '/policies'),
+      apiCall('GET', '/payments/history'),
+      apiCall('GET', '/claims')
+    ]);
+
+    if (policyRes.ok) {
+      const policies = policyRes.data.data || [];
+      document.getElementById('statPolicies').textContent = policies.length;
+
+      // Policies list
+      const activePolicies = policies.slice(0, 5);
+      document.getElementById('policiesList').innerHTML = activePolicies.map(p => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-weight:600;font-size:14px">${p.policy_number}</div>
+            <div style="font-size:12px;color:var(--text-muted)">${p.plan_type.toUpperCase()} · Due: ${formatDate(p.due_date)}</div>
+          </div>
+          <div>
+            ${statusBadge(p.status)}
+            <div style="font-size:13px;font-weight:600;color:var(--primary);text-align:right">${formatCurrency(p.premium_amount)}</div>
+          </div>
+        </div>
+      `).join('') || '<p style="color:var(--text-muted)">No policies found</p>';
+
+      // Due alerts
+      const dueSoon = policies.filter(p => {
+        const due = new Date(p.due_date);
+        const diff = (due - new Date()) / (1000 * 60 * 60 * 24);
+        return diff <= 30 && diff >= 0 && p.status === 'active';
+      });
+      document.getElementById('dueAlerts').innerHTML = dueSoon.length
+        ? dueSoon.map(p => `
+          <div class="alert alert-warning">
+            ⚠️ Policy <strong>${p.policy_number}</strong> premium of ${formatCurrency(p.premium_amount)} is due on <strong>${formatDate(p.due_date)}</strong>
+            <a href="/payment.html" class="btn btn-accent btn-sm" style="margin-left:auto">Pay Now</a>
+          </div>`).join('')
+        : '<p style="color:var(--text-muted)">No upcoming due payments</p>';
+    }
+
+    if (paymentRes.ok) {
+      const payments = paymentRes.data.data || [];
+      const successful = payments.filter(p => p.status === 'success').length;
+      const failed     = payments.filter(p => p.status === 'failed').length;
+      document.getElementById('statPayments').textContent = successful;
+      document.getElementById('statFailed').textContent = failed;
+
+      document.getElementById('recentPayments').innerHTML = payments.slice(0, 5).map(p => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-weight:600;font-size:13px">${p.transaction_ref}</div>
+            <div style="font-size:12px;color:var(--text-muted)">${p.policy_number} · ${p.payment_method}</div>
+          </div>
+          <div style="text-align:right">
+            ${statusBadge(p.status)}
+            <div style="font-size:13px;font-weight:600;color:var(--primary)">${formatCurrency(p.amount)}</div>
+          </div>
+        </div>
+      `).join('') || '<p style="color:var(--text-muted)">No payments yet</p>';
+    }
+
+    if (claimsRes.ok) {
+      const pending = (claimsRes.data.data || []).filter(c => ['pending','under_review'].includes(c.status)).length;
+      document.getElementById('statPending').textContent = pending;
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

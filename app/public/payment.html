@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InsureFlow - Premium Payment</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar"></div>
+<main class="main">
+  <div class="page-header">
+    <h1 class="page-title">💳 Premium Payment</h1>
+    <p class="page-subtitle">Make insurance premium payments</p>
+  </div>
+
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px">
+    <!-- Payment Form -->
+    <div class="card">
+      <div class="card-title">New Payment</div>
+      <div id="alertBox"></div>
+      <form id="paymentForm">
+        <div class="form-group">
+          <label class="form-label">Select Policy *</label>
+          <select id="policySelect" class="form-control" required>
+            <option value="">-- Select a policy --</option>
+          </select>
+        </div>
+        <div id="policyDetails" style="display:none" class="alert alert-info" style="margin-bottom:16px"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Amount (₹) *</label>
+            <input type="number" id="amount" class="form-control" placeholder="Enter amount" min="1" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Payment Method *</label>
+            <select id="paymentMethod" class="form-control" required>
+              <option value="">-- Select --</option>
+              <option value="NEFT">NEFT</option>
+              <option value="NACH">NACH</option>
+              <option value="CARD">Debit/Credit Card</option>
+              <option value="UPI">UPI</option>
+              <option value="CHEQUE">Cheque</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Remarks</label>
+          <input type="text" id="remarks" class="form-control" placeholder="Optional remarks">
+        </div>
+        <button type="submit" class="btn btn-primary" id="payBtn" style="width:100%">💳 Make Payment</button>
+      </form>
+    </div>
+
+    <!-- Confirmation / Result -->
+    <div class="card" id="resultCard" style="display:none">
+      <div class="card-title">Payment Result</div>
+      <div id="paymentResult"></div>
+    </div>
+
+    <!-- Failed Payments Queue -->
+    <div class="card" id="failedCard">
+      <div class="card-title">⚠️ Failed Payment Queue</div>
+      <div id="failedPayments"><p style="color:var(--text-muted)">Loading...</p></div>
+    </div>
+  </div>
+</main>
+
+<!-- Confirmation Modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <div class="modal-title">Confirm Payment</div>
+    <p id="confirmText"></p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="confirmBtn">Confirm Payment</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/utils.js"></script>
+<script>
+  requireAuth();
+  renderSidebar('payment');
+  let pendingPayload = null;
+
+  // Load policies into dropdown
+  async function loadPolicies() {
+    const { ok, data } = await apiCall('GET', '/policies');
+    if (ok) {
+      const sel = document.getElementById('policySelect');
+      (data.data || []).filter(p => p.status === 'active').forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.dataset.premium = p.premium_amount;
+        opt.dataset.type = p.plan_type;
+        opt.textContent = `${p.policy_number} - ${p.plan_type.toUpperCase()} - Due: ${formatDate(p.due_date)}`;
+        sel.appendChild(opt);
+      });
+    }
+  }
+
+  document.getElementById('policySelect').addEventListener('change', function() {
+    const opt = this.options[this.selectedIndex];
+    const details = document.getElementById('policyDetails');
+    if (opt.value) {
+      document.getElementById('amount').value = opt.dataset.premium;
+      details.style.display = 'block';
+      details.textContent = `📋 ${opt.dataset.type.toUpperCase()} Policy — Premium: ${formatCurrency(opt.dataset.premium)}`;
+    } else {
+      details.style.display = 'none';
+    }
+  });
+
+  document.getElementById('paymentForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    pendingPayload = {
+      policy_id: parseInt(document.getElementById('policySelect').value),
+      amount: parseFloat(document.getElementById('amount').value),
+      payment_method: document.getElementById('paymentMethod').value,
+      remarks: document.getElementById('remarks').value
+    };
+    document.getElementById('confirmText').innerHTML =
+      `Pay <strong>${formatCurrency(pendingPayload.amount)}</strong> via <strong>${pendingPayload.payment_method}</strong> for selected policy?`;
+    document.getElementById('confirmModal').classList.add('active');
+  });
+
+  document.getElementById('confirmBtn').addEventListener('click', async () => {
+    closeModal();
+    document.getElementById('payBtn').disabled = true;
+    document.getElementById('payBtn').textContent = '⏳ Processing...';
+    document.getElementById('alertBox').innerHTML = '';
+
+    const { ok, data } = await apiCall('POST', '/payments', pendingPayload);
+    const resultCard = document.getElementById('resultCard');
+    const result     = document.getElementById('paymentResult');
+    resultCard.style.display = 'block';
+
+    if (ok && data.data.status === 'success') {
+      result.innerHTML = `
+        <div class="alert alert-success">✅ Payment Successful!</div>
+        <div style="line-height:2">
+          <div><strong>Transaction Ref:</strong> ${data.data.transaction_ref}</div>
+          <div><strong>Amount:</strong> ${formatCurrency(data.data.amount)}</div>
+          <div><strong>Method:</strong> ${data.data.payment_method}</div>
+          <div><strong>Date:</strong> ${formatDateTime(data.data.paid_at)}</div>
+        </div>
+        <a href="/api/payments/receipt/${data.data.id}" target="_blank" class="btn btn-primary" style="margin-top:16px">📄 Download Receipt</a>
+      `;
+      showToast('Payment successful!', 'success');
+    } else {
+      result.innerHTML = `
+        <div class="alert alert-error">❌ Payment Failed</div>
+        <p><strong>Reason:</strong> ${data.data?.failure_reason || data.message || 'Unknown error'}</p>
+        <p style="margin-top:8px;color:var(--text-muted)">You can retry this payment from the Failed Payment Queue.</p>
+      `;
+      showToast('Payment failed. See details.', 'error');
+    }
+    document.getElementById('payBtn').disabled = false;
+    document.getElementById('payBtn').textContent = '💳 Make Payment';
+    loadFailedPayments();
+  });
+
+  function closeModal() { document.getElementById('confirmModal').classList.remove('active'); }
+
+  async function loadFailedPayments() {
+    const { ok, data } = await apiCall('GET', '/payments/history?status=failed');
+    const container = document.getElementById('failedPayments');
+    if (ok && data.data.length > 0) {
+      container.innerHTML = data.data.map(p => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-weight:600;font-size:13px">${p.transaction_ref}</div>
+            <div style="font-size:12px;color:var(--text-muted)">${p.policy_number} · Retries: ${p.retry_count}/3</div>
+            <div style="font-size:12px;color:var(--danger)">${p.failure_reason || 'Failed'}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-weight:600;margin-bottom:6px">${formatCurrency(p.amount)}</div>
+            ${p.retry_count < 3 ? `<button class="btn btn-warning btn-sm" onclick="retryPayment(${p.id})">↺ Retry</button>` : '<span class="badge badge-danger">Max retries</span>'}
+          </div>
+        </div>
+      `).join('');
+    } else {
+      container.innerHTML = '<p style="color:var(--text-muted)">No failed payments</p>';
+    }
+  }
+
+  async function retryPayment(id) {
+    const { ok, data } = await apiCall('PUT', `/payments/${id}/retry`);
+    showToast(data.message, ok && data.data.status === 'success' ? 'success' : 'error');
+    loadFailedPayments();
+  }
+
+  loadPolicies();
+  loadFailedPayments();
+</script>
+</body>
+</html>
