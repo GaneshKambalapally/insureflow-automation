@@ -37,14 +37,23 @@ jobs:
         run: |
           cd app
           node server.js &
-          sleep 8
+          echo "Waiting for app to start..."
+          sleep 10
 
       - name: Verify app is running
-        run: curl -f http://localhost:3000/api/health
+        run: |
+          curl -s http://localhost:3000 | grep -q "InsureFlow" \
+          && echo "✅ App is running" \
+          || curl -s http://localhost:3000/api/auth/login \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -d '{"email":"admin@insureflow.com","password":"Admin@123"}' \
+          | grep -q "token" \
+          && echo "✅ App API is responding" \
+          || (echo "❌ App not responding" && exit 1)
 
       - name: Create env file
-        run: |
-          cp .env.test.example .env.test
+        run: cp .env.test.example .env.test
 
       - name: Run all tests
         run: npm test
@@ -65,3 +74,11 @@ jobs:
           name: playwright-report-${{ github.run_number }}
           path: playwright-report/
           retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ github.run_number }}
+          path: test-results/
+          retention-days: 7
