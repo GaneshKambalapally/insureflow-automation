@@ -37,20 +37,16 @@ jobs:
         run: |
           cd app
           node server.js &
-          echo "Waiting for app to start..."
-          sleep 10
 
-      - name: Verify app is running
+      - name: Wait for app to be ready
+        run: npx wait-on http://localhost:3000 --timeout 30000
+
+      - name: Verify login works
         run: |
-          curl -s http://localhost:3000 | grep -q "InsureFlow" \
-          && echo "✅ App is running" \
-          || curl -s http://localhost:3000/api/auth/login \
-          -X POST \
+          curl -s -X POST http://localhost:3000/api/auth/login \
           -H "Content-Type: application/json" \
           -d '{"email":"admin@insureflow.com","password":"Admin@123"}' \
-          | grep -q "token" \
-          && echo "✅ App API is responding" \
-          || (echo "❌ App not responding" && exit 1)
+          | grep -q "token" && echo "✅ Login working" || echo "❌ Login failed"
 
       - name: Create env file
         run: cp .env.test.example .env.test
