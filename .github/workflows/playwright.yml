@@ -36,6 +36,25 @@ jobs:
       - name: Create env file
         run: cp .env.test.example .env.test
 
+      - name: Start app server
+        run: cd app && npm start > /tmp/app.log 2>&1 &
+        env:
+          PORT: 3000
+
+      - name: Wait for app server
+        run: |
+          for i in {1..30}; do
+            if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "App server is ready"
+              exit 0
+            fi
+            echo "Waiting for app server... ($i/30)"
+            sleep 1
+          done
+          echo "App server failed to start"
+          cat /tmp/app.log
+          exit 1
+
       - name: Run all tests
         run: npm test
         env:
