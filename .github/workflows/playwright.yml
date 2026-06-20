@@ -34,26 +34,64 @@ jobs:
         run: cd app && node database/seed.js
 
       - name: Create env file
-        run: cp .env.test.example .env.test
+        run: |
+          if [ -f .env.test.example ]; then
+            cp .env.test.example .env.test
+          else
+            cat > .env.test << EOF
+          BASE_URL=http://localhost:3000
+          API_URL=http://localhost:3000/api
+          ADMIN_EMAIL=admin@insureflow.com
+          ADMIN_PASSWORD=Admin@123
+          AGENT_EMAIL=agent@insureflow.com
+          AGENT_PASSWORD=Agent@123
+          POLICYHOLDER_EMAIL=john.doe@email.com
+          POLICYHOLDER_PASSWORD=Policy@123
+          EOF
+          fi
+          cat .env.test
 
       - name: Start app server
-        run: cd app && npm start > /tmp/app.log 2>&1 &
+        run: |
+          cd app
+          npm start > /tmp/app.log 2>&1 &
+          echo $! > /tmp/app.pid
+          sleep 2
         env:
           PORT: 3000
+          NODE_ENV: test
 
       - name: Wait for app server
         run: |
-          for i in {1..30}; do
+          APP_PID=$(cat /tmp/app.pid)
+          for i in {1..60}; do
             if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
-              echo "App server is ready"
+              echo "✅ App server is ready"
               exit 0
             fi
-            echo "Waiting for app server... ($i/30)"
+            # Check if process is still running
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "❌ App server process died"
+              cat /tmp/app.log
+              exit 1
+            fi
+            echo "⏳ Waiting for app server... ($i/60)"
             sleep 1
           done
-          echo "App server failed to start"
+          echo "❌ App server failed to start in time"
           cat /tmp/app.log
           exit 1
+
+      - name: Verify test environment
+        run: |
+          echo "Node version:"
+          node --version
+          echo "Playwright version:"
+          npx playwright --version
+          echo "Environment:"
+          env | grep -E "BASE_URL|API_URL|PORT" || true
+          echo "Checking app server:"
+          curl -v http://localhost:3000/api/health
 
       - name: Run all tests
         run: npm test
@@ -67,6 +105,12 @@ jobs:
           AGENT_PASSWORD: Agent@123
           POLICYHOLDER_EMAIL: john.doe@email.com
           POLICYHOLDER_PASSWORD: Policy@123
+
+      - name: Print app server logs on failure
+        if: failure()
+        run: |
+          echo "=== App Server Logs ==="
+          cat /tmp/app.log || echo "No logs available"
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
