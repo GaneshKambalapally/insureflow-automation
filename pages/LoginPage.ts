@@ -153,7 +153,7 @@ async assertBrowserValidationBlocks(): Promise<void> {
   // Browser HTML5 validation prevents submission
   // Form is invalid — no API call made
   // Verify we are still on login page
-  await expect(this.page).toHaveURL(/localhost:3000\/?$/);
+  await expect(this.page).toHaveURL(/localhost:\d+\/?$/);
   await expect(this.emailInput).toBeVisible();
 }
 }

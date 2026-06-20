@@ -48,22 +48,20 @@ test.describe("Login Page-Functional Test", () => {
     await dashboardPage.assertWelcomeMessageContains("Admin User");
   });
   // Negative test pattern:
-test('@regression @auth Login fails with wrong password',
-  async ({ loginPage }) => {
+  test('@regression @auth Login fails with wrong password', async ({ loginPage }) => {
     await loginPage.goto();
     await loginPage.emailInput.fill('wrong@email.com');
     await loginPage.passwordInput.fill('WrongPassword123');
     await loginPage.assertErrorMessage('Invalid');
-});
+  });
 
-test('@regression @auth Login fails with wrong email',
-  async ({ loginPage }) => {
+  test('@regression @auth Login fails with wrong email', async ({ loginPage }) => {
     await loginPage.goto();
     await loginPage.emailInput.fill('notanemail');
     await loginPage.passwordInput.fill('Admin@123');
     await loginPage.loginButton.click();
     await loginPage.assertBrowserValidationBlocks();
-});
+  });
   test("@regression @auth Login fails for inactive account", async ({
     loginPage,
   }) => {

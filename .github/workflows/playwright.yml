@@ -33,27 +33,13 @@ jobs:
       - name: Seed database
         run: cd app && node database/seed.js
 
-      - name: Start InsureFlow app
-        run: |
-          cd app
-          node server.js &
-
-      - name: Wait for app to be ready
-        run: npx wait-on http://localhost:3000 --timeout 30000
-
-      - name: Verify login works
-        run: |
-          curl -s -X POST http://localhost:3000/api/auth/login \
-          -H "Content-Type: application/json" \
-          -d '{"email":"admin@insureflow.com","password":"Admin@123"}' \
-          | grep -q "token" && echo "✅ Login working" || echo "❌ Login failed"
-
       - name: Create env file
         run: cp .env.test.example .env.test
 
       - name: Run all tests
         run: npm test
         env:
+          CI: true
           BASE_URL: http://localhost:3000
           API_URL: http://localhost:3000/api
           ADMIN_EMAIL: admin@insureflow.com
